@@ -1,0 +1,24 @@
+﻿{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "1.0",
+	"FriendlyName": "LTween",
+	"Description": "LTween (Lex-Tween) is a tween animation library",
+	"Category": "LexPlugin",
+	"CreatedBy": "LexLiu",
+	"CreatedByURL": "",
+	"DocsURL": "https://liufei2008.github.io/LTweenDoc/",
+	"MarketplaceURL": "",
+	"SupportURL": "707908214@qq.com",
+	"EngineVersion": "5.1.0",
+	"CanContainContent": true,
+	"Installed": true,
+	"Modules": [
+		{
+			"Name": "LTween",
+			"Type": "Runtime",
+			"LoadingPhase": "Default",
+			"WhitelistPlatforms": [ "Win64", "Mac", "Linux", "IOS", "Android" ]
+		}
+	]
+}
