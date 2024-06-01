@@ -140,12 +140,26 @@ ULTweener* ULTweener::SetCurveFloat(UCurveFloat* newCurveFloat)
 	curveFloat = newCurveFloat;
 	return this;
 }
-
-bool ULTweener::ToNext(float deltaTime)
+ULTweener* ULTweener::SetAffectByGamePause(bool value)
 {
+	affectByGamePause = value;
+	return this;
+}
+ULTweener* ULTweener::SetAffectByTimeDilation(bool value)
+{
+	affectByTimeDilation = value;
+	return this;
+}
+
+bool ULTweener::ToNext(float deltaTime, float unscaledDeltaTime)
+{
+	if (auto world = GetWorld())
+	{
+		if (world->IsPaused() && affectByGamePause)return true;
+	}
 	if (isMarkedToKill)return false;
 	if (isMarkedPause)return true;//no need to tick time if pause
-	return this->ToNextWithElapsedTime(elapseTime + deltaTime);
+	return this->ToNextWithElapsedTime(elapseTime + (affectByTimeDilation ? deltaTime : unscaledDeltaTime));
 }
 bool ULTweener::ToNextWithElapsedTime(float InElapseTime)
 {
@@ -274,6 +288,31 @@ void ULTweener::Goto(float timePoint)
 	reverseTween = false;
 
 	this->ToNextWithElapsedTime(timePoint);
+}
+
+float ULTweener::GetProgress()const
+{
+	if (elapseTime > delay)
+	{
+		float elapseTimeWithoutDelay = elapseTime - delay;
+		float currentTime = elapseTimeWithoutDelay - duration * loopCycleCount;
+		if (currentTime >= duration)
+		{
+			return 1;
+		}
+		else
+		{
+			if (reverseTween)
+			{
+				currentTime = duration - currentTime;
+			}
+			return currentTime / duration;
+		}
+	}
+	else
+	{
+		return 0;
+	}
 }
 
 float ULTweener::CurveFloat(float c, float b, float t, float d)
