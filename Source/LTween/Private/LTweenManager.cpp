@@ -19,6 +19,7 @@
 
 #include "Tweener/LTweenerFrame.h"
 #include "Tweener/LTweenerVirtual.h"
+#include "Tweener/LTweenerUpdate.h"
 
 #include "LTweenerSequence.h"
 
@@ -50,7 +51,14 @@ void ULTweenManager::Tick(float DeltaTime)
 {
 	if (TickPaused == false)
 	{
-		OnTick(DeltaTime);
+		if (auto World = GetWorld())
+		{
+			OnTick(World->DeltaTimeSeconds, World->DeltaRealTimeSeconds);
+		}
+		else
+		{
+			OnTick(DeltaTime, DeltaTime);
+		}
 	}
 }
 
@@ -73,6 +81,10 @@ UWorld* ULTweenManager::GetTickableGameObjectWorld() const
 {
 	return GetGameInstance()->GetWorld();
 }
+bool ULTweenManager::IsTickableWhenPaused() const
+{
+	return true;
+}
 //~End of FTickableObjectBase interface
 
 #include "Kismet/GameplayStatics.h"
@@ -84,7 +96,7 @@ ULTweenManager* ULTweenManager::GetLTweenInstance(UObject* WorldContextObject)
 		return nullptr;
 }
 
-void ULTweenManager::OnTick(float DeltaTime)
+void ULTweenManager::OnTick(float DeltaTime, float UnscaledDeltaTime)
 {
 	SCOPE_CYCLE_COUNTER(STAT_Update);
 	
@@ -100,7 +112,7 @@ void ULTweenManager::OnTick(float DeltaTime)
 		}
 		else
 		{
-			if (tweener->ToNext(DeltaTime) == false)
+			if (tweener->ToNext(DeltaTime, UnscaledDeltaTime) == false)
 			{
 				tweenerList.RemoveAt(i);
 				tweener->ConditionalBeginDestroy();
@@ -115,7 +127,7 @@ void ULTweenManager::OnTick(float DeltaTime)
 
 void ULTweenManager::CustomTick(float DeltaTime)
 {
-	OnTick(DeltaTime);
+	OnTick(DeltaTime, DeltaTime);
 }
 
 void ULTweenManager::DisableTick()
@@ -345,6 +357,16 @@ ULTweener* ULTweenManager::DelayFrameCall(UObject* WorldContextObject, int delay
 
 	auto tweener = NewObject<ULTweenerFrame>(WorldContextObject);
 	tweener->SetInitialValue(delayFrame);
+	Instance->tweenerList.Add(tweener);
+	return tweener;
+}
+
+ULTweener* ULTweenManager::UpdateCall(UObject* WorldContextObject)
+{
+	auto Instance = GetLTweenInstance(WorldContextObject);
+	if (!IsValid(Instance))return nullptr;
+
+	auto tweener = NewObject<ULTweenerUpdate>(WorldContextObject);
 	Instance->tweenerList.Add(tweener);
 	return tweener;
 }
