@@ -23,8 +23,12 @@ protected:
 	{
 		
 	}
-	virtual bool ToNext(float deltaTime) override
+	virtual bool ToNext(float deltaTime, float unscaledDeltaTime) override
 	{
+		if (auto world = GetWorld())
+		{
+			if (world->IsPaused() && affectByGamePause)return true;
+		}
 		if (isMarkedToKill)return false;
 		if (isMarkedPause)return true;//no need to tick time if pause
 		if (!startToTween)
