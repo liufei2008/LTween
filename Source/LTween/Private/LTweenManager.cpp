@@ -25,6 +25,7 @@
 
 #include "Engine/World.h"
 #include "Engine/Engine.h"
+#include "Engine/GameInstance.h"
 
 ULTweenTickHelperComponent::ULTweenTickHelperComponent()
 {
@@ -139,13 +140,15 @@ FLTweenManagerCreated ULTweenManager::OnLTweenManagerCreated;
 //~USubsystem interface
 void ULTweenManager::Initialize(FSubsystemCollectionBase& Collection)
 {
+	Super::Initialize(Collection);
 	const UGameInstance* LocalGameInstance = GetGameInstance();
 	check(LocalGameInstance);
 }
 
 void ULTweenManager::Deinitialize()
 {
-	tweenerList.Empty();
+	Super::Deinitialize();
+	TweenerList.Empty();
 }
 
 bool ULTweenManager::ShouldCreateSubsystem(UObject* Outer) const
@@ -156,7 +159,6 @@ bool ULTweenManager::ShouldCreateSubsystem(UObject* Outer) const
 
 void ULTweenManager::Tick(ELTweenTickType TickType, float DeltaTime)
 {
-	if (bTickPaused)return;
 	if (TickType == ELTweenTickType::Manual)
 	{
 		OnTick(TickType, DeltaTime, DeltaTime);
@@ -175,7 +177,6 @@ void ULTweenManager::Tick(ELTweenTickType TickType, float DeltaTime)
 }
 
 #include "Kismet/GameplayStatics.h"
-#include "Engine/GameInstance.h"
 ULTweenManager* ULTweenManager::GetLTweenInstance(UObject* WorldContextObject)
 {
 	if (auto GameInstance = UGameplayStatics::GetGameInstance(WorldContextObject))
@@ -188,72 +189,102 @@ void ULTweenManager::OnTick(ELTweenTickType TickType, float DeltaTime, float Uns
 {
 	SCOPE_CYCLE_COUNTER(STAT_Update);
 	
-	auto count = tweenerList.Num();
-	for (int32 i = 0; i < count; i++)
+	auto Count = TweenerList.Num();
+	for (int32 i = 0; i < Count; i++)
 	{
-		auto tweener = tweenerList[i];
+		auto tweener = TweenerList[i];
 		if (!IsValid(tweener))
 		{
-			tweenerList.RemoveAt(i);
+			TweenerList.RemoveAt(i);
 			i--;
-			count--;
+			Count--;
 		}
 		else
 		{
 			if (tweener->GetTickType() != TickType)continue;
 			if (tweener->ToNext(DeltaTime, UnscaledDeltaTime) == false)
 			{
-				tweenerList.RemoveAt(i);
-				tweener->ConditionalBeginDestroy();
+				TweenerList.RemoveAt(i);
+				tweener->MarkAsGarbage();
 				i--;
-				count--;
+				Count--;
 			}
 		}
 	}
 	if (TickType == ELTweenTickType::DuringPhysics)
 	{
-		if (updateEvent.IsBound())
-			updateEvent.Broadcast(DeltaTime);
+		if (UpdateEvent.IsBound())
+			UpdateEvent.Broadcast(DeltaTime);
 	}
 }
 
-void ULTweenManager::CustomTick(float DeltaTime)
-{
-	OnTick(ELTweenTickType::DuringPhysics, DeltaTime, DeltaTime);
-}
-
-void ULTweenManager::DisableTick()
-{
-	bTickPaused = true;
-}
-void ULTweenManager::EnableTick()
-{
-	bTickPaused = false;
-}
 void ULTweenManager::ManualTick(float DeltaTime)
 {
 	Tick(ELTweenTickType::Manual, DeltaTime);
 }
-void ULTweenManager::KillAllTweens(bool callComplete)
+void ULTweenManager::KillAllTweens(bool bCallComplete)
 {
-	for (auto item : tweenerList)
+	for (auto item : TweenerList)
 	{
 		if (IsValid(item))
 		{
-			item->Kill(callComplete);
+			item->Kill(bCallComplete);
 		}
 	}
-	tweenerList.Reset();
+	TweenerList.Reset();
 }
+
+int ULTweenManager::KillAllTweensOnTarget(UObject* WorldContextObject, UObject* TargetObject, bool bCallComplete)
+{
+	auto Instance = GetLTweenInstance(WorldContextObject);
+	if (!IsValid(Instance))return 0;
+	int Count = 0;
+	for (auto item : Instance->TweenerList)
+	{
+		if (IsValid(item))
+		{
+			if (item->IsInOuter(TargetObject))
+			{
+				item->Kill(bCallComplete);
+				Count++;
+			}
+		}
+	}
+	return Count;
+}
+
+int ULTweenManager::KillAllTweensById(UObject* WorldContextObject, int32 Id, bool bCallComplete)
+{
+	auto Instance = GetLTweenInstance(WorldContextObject);
+	if (!IsValid(Instance))return 0;
+	int Count = 0;
+	for (auto item : Instance->TweenerList)
+	{
+		if (IsValid(item))
+		{
+			if (item->GetId() == Id)
+			{
+				item->Kill(bCallComplete);
+				Count++;
+			}
+		}
+	}
+	return Count;
+}
+
 bool ULTweenManager::IsTweening(UObject* WorldContextObject, ULTweener* item)
 {
-	if (!IsValid(item))return false;
-
 	auto Instance = GetLTweenInstance(WorldContextObject);
 	if (!IsValid(Instance))return false;
-
-	return Instance->tweenerList.Contains(item);
+	return Instance->IsTweening(item);
 }
+
+bool ULTweenManager::IsTweening(ULTweener* item)
+{
+	if (!IsValid(item))return false;
+	return TweenerList.Contains(item);
+}
+
 void ULTweenManager::KillIfIsTweening(UObject* WorldContextObject, ULTweener* item, bool callComplete)
 {
 	if (IsTweening(WorldContextObject, item))
@@ -261,14 +292,28 @@ void ULTweenManager::KillIfIsTweening(UObject* WorldContextObject, ULTweener* it
 		item->Kill(callComplete);
 	}
 }
+
+void ULTweenManager::KillIfIsTweening(ULTweener* item, bool callComplete)
+{
+	if (IsTweening(item))
+	{
+		item->Kill(callComplete);
+	}
+}
+
 void ULTweenManager::RemoveTweener(UObject* WorldContextObject, ULTweener* item)
 {
-	if (!IsValid(item))return;
-
 	auto Instance = GetLTweenInstance(WorldContextObject);
 	if (!IsValid(Instance))return;
-	Instance->tweenerList.Remove(item);
+	Instance->RemoveTweener(item);
 }
+
+void ULTweenManager::RemoveTweener(ULTweener* item)
+{
+	if (!IsValid(item))return;
+	TweenerList.Remove(item);
+}
+
 //float
 ULTweener* ULTweenManager::To(UObject* WorldContextObject, const FLTweenFloatGetterFunction& getter, const FLTweenFloatSetterFunction& setter, float endValue, float duration)
 {
@@ -277,7 +322,7 @@ ULTweener* ULTweenManager::To(UObject* WorldContextObject, const FLTweenFloatGet
 
 	auto tweener = NewObject<ULTweenerFloat>(WorldContextObject);
 	tweener->SetInitialValue(getter, setter, endValue, duration);
-	Instance->tweenerList.Add(tweener);
+	Instance->TweenerList.Add(tweener);
 	return tweener;
 }
 //float
@@ -288,7 +333,7 @@ ULTweener* ULTweenManager::To(UObject* WorldContextObject, const FLTweenDoubleGe
 
 	auto tweener = NewObject<ULTweenerDouble>(WorldContextObject);
 	tweener->SetInitialValue(getter, setter, endValue, duration);
-	Instance->tweenerList.Add(tweener);
+	Instance->TweenerList.Add(tweener);
 	return tweener;
 }
 //interger
@@ -299,7 +344,7 @@ ULTweener* ULTweenManager::To(UObject* WorldContextObject, const FLTweenIntGette
 
 	auto tweener = NewObject<ULTweenerInteger>(WorldContextObject);
 	tweener->SetInitialValue(getter, setter, endValue, duration);
-	Instance->tweenerList.Add(tweener);
+	Instance->TweenerList.Add(tweener);
 	return tweener;
 }
 //position
@@ -310,7 +355,7 @@ ULTweener* ULTweenManager::To(UObject* WorldContextObject, const FLTweenPosition
 
 	auto tweener = NewObject<ULTweenerPosition>(WorldContextObject);
 	tweener->SetInitialValue(getter, setter, endValue, duration, sweep, sweepHitResult, teleportType);
-	Instance->tweenerList.Add(tweener);
+	Instance->TweenerList.Add(tweener);
 	return tweener;
 }
 //vector
@@ -321,7 +366,7 @@ ULTweener* ULTweenManager::To(UObject* WorldContextObject, const FLTweenVectorGe
 
 	auto tweener = NewObject<ULTweenerVector>(WorldContextObject);
 	tweener->SetInitialValue(getter, setter, endValue, duration);
-	Instance->tweenerList.Add(tweener);
+	Instance->TweenerList.Add(tweener);
 	return tweener;
 }
 //color
@@ -332,7 +377,7 @@ ULTweener* ULTweenManager::To(UObject* WorldContextObject, const FLTweenColorGet
 
 	auto tweener = NewObject<ULTweenerColor>(WorldContextObject);
 	tweener->SetInitialValue(getter, setter, endValue, duration);
-	Instance->tweenerList.Add(tweener);
+	Instance->TweenerList.Add(tweener);
 	return tweener;
 }
 //linearcolor
@@ -343,7 +388,7 @@ ULTweener* ULTweenManager::To(UObject* WorldContextObject, const FLTweenLinearCo
 
 	auto tweener = NewObject<ULTweenerLinearColor>(WorldContextObject);
 	tweener->SetInitialValue(getter, setter, endValue, duration);
-	Instance->tweenerList.Add(tweener);
+	Instance->TweenerList.Add(tweener);
 	return tweener;
 }
 //vector2d
@@ -354,7 +399,7 @@ ULTweener* ULTweenManager::To(UObject* WorldContextObject, const FLTweenVector2D
 
 	auto tweener = NewObject<ULTweenerVector2D>(WorldContextObject);
 	tweener->SetInitialValue(getter, setter, endValue, duration);
-	Instance->tweenerList.Add(tweener);
+	Instance->TweenerList.Add(tweener);
 	return tweener;
 }
 //vector4
@@ -365,7 +410,7 @@ ULTweener* ULTweenManager::To(UObject* WorldContextObject, const FLTweenVector4G
 
 	auto tweener = NewObject<ULTweenerVector4>(WorldContextObject);
 	tweener->SetInitialValue(getter, setter, endValue, duration);
-	Instance->tweenerList.Add(tweener);
+	Instance->TweenerList.Add(tweener);
 	return tweener;
 }
 //quaternion
@@ -376,7 +421,7 @@ ULTweener* ULTweenManager::To(UObject* WorldContextObject, const FLTweenQuaterni
 
 	auto tweener = NewObject<ULTweenerQuaternion>(WorldContextObject);
 	tweener->SetInitialValue(getter, setter, endValue, duration);
-	Instance->tweenerList.Add(tweener);
+	Instance->TweenerList.Add(tweener);
 	return tweener;
 }
 //rotator
@@ -387,7 +432,7 @@ ULTweener* ULTweenManager::To(UObject* WorldContextObject, const FLTweenRotatorG
 
 	auto tweener = NewObject<ULTweenerRotator>(WorldContextObject);
 	tweener->SetInitialValue(getter, setter, endValue, duration);
-	Instance->tweenerList.Add(tweener);
+	Instance->TweenerList.Add(tweener);
 	return tweener;
 }
 //rotation euler
@@ -398,7 +443,7 @@ ULTweener* ULTweenManager::To(UObject* WorldContextObject, const FLTweenRotation
 
 	auto tweener = NewObject<ULTweenerRotationEuler>(WorldContextObject);
 	tweener->SetInitialValue(getter, setter, eulerAngle, duration, sweep, sweepHitResult, teleportType);
-	Instance->tweenerList.Add(tweener);
+	Instance->TweenerList.Add(tweener);
 	return tweener;
 }
 //rotation quat
@@ -409,7 +454,7 @@ ULTweener* ULTweenManager::To(UObject* WorldContextObject, const FLTweenRotation
 
 	auto tweener = NewObject<ULTweenerRotationQuat>(WorldContextObject);
 	tweener->SetInitialValue(getter, setter, endValue, duration, sweep, sweepHitResult, teleportType);
-	Instance->tweenerList.Add(tweener);
+	Instance->TweenerList.Add(tweener);
 	return tweener;
 }
 //material scalar
@@ -420,7 +465,7 @@ ULTweener* ULTweenManager::To(UObject* WorldContextObject, const FLTweenMaterial
 
 	auto tweener = NewObject<ULTweenerMaterialScalar>(WorldContextObject);
 	tweener->SetInitialValue(getter, setter, endValue, duration, parameterIndex);
-	Instance->tweenerList.Add(tweener);
+	Instance->TweenerList.Add(tweener);
 	return tweener;
 }
 //material vector
@@ -431,7 +476,7 @@ ULTweener* ULTweenManager::To(UObject* WorldContextObject, const FLTweenMaterial
 
 	auto tweener = NewObject<ULTweenerMaterialVector>(WorldContextObject);
 	tweener->SetInitialValue(getter, setter, endValue, duration, parameterIndex);
-	Instance->tweenerList.Add(tweener);
+	Instance->TweenerList.Add(tweener);
 	return tweener;
 }
 
@@ -442,7 +487,7 @@ ULTweener* ULTweenManager::VirtualTo(UObject* WorldContextObject, float duration
 
 	auto tweener = NewObject<ULTweenerVirtual>(WorldContextObject);
 	tweener->SetInitialValue(duration);
-	Instance->tweenerList.Add(tweener);
+	Instance->TweenerList.Add(tweener);
 	return tweener;
 }
 
@@ -453,7 +498,7 @@ ULTweener* ULTweenManager::DelayFrameCall(UObject* WorldContextObject, int delay
 
 	auto tweener = NewObject<ULTweenerFrame>(WorldContextObject);
 	tweener->SetInitialValue(delayFrame);
-	Instance->tweenerList.Add(tweener);
+	Instance->TweenerList.Add(tweener);
 	return tweener;
 }
 
@@ -463,7 +508,7 @@ ULTweener* ULTweenManager::UpdateCall(UObject* WorldContextObject)
 	if (!IsValid(Instance))return nullptr;
 
 	auto tweener = NewObject<ULTweenerUpdate>(WorldContextObject);
-	Instance->tweenerList.Add(tweener);
+	Instance->TweenerList.Add(tweener);
 	return tweener;
 }
 
@@ -473,21 +518,6 @@ ULTweenerSequence* ULTweenManager::CreateSequence(UObject* WorldContextObject)
 	if (!IsValid(Instance))return nullptr;
 
 	auto tweener = NewObject<ULTweenerSequence>(WorldContextObject);
-	Instance->tweenerList.Add(tweener);
+	Instance->TweenerList.Add(tweener);
 	return tweener;
-}
-
-FDelegateHandle ULTweenManager::RegisterUpdateEvent(UObject* WorldContextObject, const FLTweenUpdateDelegate& update)
-{
-	auto Instance = GetLTweenInstance(WorldContextObject);
-	if (!IsValid(Instance))return FDelegateHandle();
-
-	return Instance->updateEvent.Add(update);
-}
-void ULTweenManager::UnregisterUpdateEvent(UObject* WorldContextObject, const FDelegateHandle& delegateHandle)
-{
-	auto Instance = GetLTweenInstance(WorldContextObject);
-	if (!IsValid(Instance))return;
-
-	Instance->updateEvent.Remove(delegateHandle);
 }

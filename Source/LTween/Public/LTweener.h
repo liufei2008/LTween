@@ -12,13 +12,6 @@ DECLARE_DELEGATE_RetVal_FourParams(float, FLTweenFunction, float, float, float, 
 DECLARE_DELEGATE_OneParam(FLTweenUpdateDelegate, float);
 DECLARE_MULTICAST_DELEGATE_OneParam(FLTweenUpdateMulticastDelegate, float);
 
-#ifndef LTweenUpdateDelegate
-#define LTweenUpdateDelegate UE_DEPRECATED_MACRO(5.0, "LTweenUpdateDelegate has been renamed to FLTweenUpdateDelegate") FLTweenUpdateDelegate
-#endif
-#ifndef LTweenUpdateMulticastDelegate
-#define LTweenUpdateMulticastDelegate UE_DEPRECATED_MACRO(5.0, "LTweenUpdateMulticastDelegate has been renamed to FLTweenUpdateMulticastDelegate") FLTweenUpdateMulticastDelegate
-#endif
-
 DECLARE_DELEGATE_RetVal(float, FLTweenFloatGetterFunction);
 DECLARE_DELEGATE_OneParam(FLTweenFloatSetterFunction, float);
 
@@ -62,9 +55,9 @@ DECLARE_DELEGATE_RetVal_OneParam(bool, FLTweenMaterialVectorGetterFunction, FLin
 DECLARE_DELEGATE_RetVal_TwoParams(bool, FLTweenMaterialVectorSetterFunction, int32, const FLinearColor&);
 
 /** simple delegate */
-DECLARE_DYNAMIC_DELEGATE(FLTweenerSimpleDynamicDelegate);
+DECLARE_DYNAMIC_DELEGATE(FLTweenSimpleDynamicDelegate);
 /** @param InProgress Progress of this tween, from 0 to 1 */
-DECLARE_DYNAMIC_DELEGATE_OneParam(FLTweenerFloatDynamicDelegate, float, InProgress);
+DECLARE_DYNAMIC_DELEGATE_OneParam(FLTweenFloatDynamicDelegate, float, InProgress);
 
 /**  */
 UENUM(BlueprintType, Category = LTween)
@@ -112,13 +105,13 @@ enum class ELTweenEase :uint8
 	InBounce,
 	OutBounce,
 	InOutBounce,
-	/** Use CurveFloat to animate, only range 0-1 is valid. If use this you must assign curveFloat, or fallback to Linear. */
+	/**
+	 * Use CurveFloat or RuntimeFloatCurve to animate, only range 0-1 is valid.
+	 * Call SetCurveFloat or SetRuntimeCurveFloat to set the curve.
+	 * Fallback to Linear if curve is not set or invalid.
+	 */
 	CurveFloat,
 };
-
-#ifndef LTweenEase
-#define LTweenEase UE_DEPRECATED_MACRO(5.0, "LTweenEase has been renamed to ELTweenEase") ELTweenEase
-#endif
 
 /**
  * Loop type
@@ -135,10 +128,6 @@ enum class ELTweenLoop :uint8
 	/** Continuously increments the tween at the end of each loop cycle (A to B, B to B+(A-B), and so on). */
 	Incremental,
 };
-
-#ifndef LTweenLoop
-#define LTweenLoop UE_DEPRECATED_MACRO(5.0, "LTweenLoop has been renamed to ELTweenLoop") ELTweenLoop
-#endif
 
 class UCurveFloat;
 
@@ -159,8 +148,6 @@ protected:
 	float delay = 0.0f;
 	/** total elapse time, include delay */
 	float elapseTime = 0.0f;
-	/** use CurveFloat as animation function,horizontal is time (0-1),vertical is value (0-1) */
-	TWeakObjectPtr<UCurveFloat> curveFloat = nullptr;
 	/** loop type */
 	ELTweenLoop loopType = ELTweenLoop::Once;
 	/** max loop count when loop type is Restart/Yoyo/Incremental */
@@ -169,6 +156,8 @@ protected:
 	int32 loopCycleCount = 0;
 	/** how this tween update */
 	ELTweenTickType tickType = ELTweenTickType::DuringPhysics;
+	/** id for this tween */
+	int32 id = -1;
 
 	/** reverse animation */
 	bool reverseTween = false;
@@ -203,22 +192,13 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "LTween")
 		ULTweener* SetEase(ELTweenEase easetype);
-	/** set ease to CurveFloat and use CurveFloat as animation function, horizontal is time (0-1),vertical is value (0-1) */
-	UE_DEPRECATED(4.23, "SetEaseCurve is not valid anymore, use SetEase and SetCurveFloat instead.")
-	UFUNCTION(BlueprintCallable, Category = "LTween", meta = (DeprecatedFunction, DeprecationMessage = "SetEaseCurve is not valid anymore, use SetEase and SetCurveFloat instead."))
-		ULTweener* SetEaseCurve(UCurveFloat* newCurve);
 	/**
 	 * Set delay time before start animation.
 	 * Has no effect if the Tween has already started.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "LTween")
 		virtual ULTweener* SetDelay(float newDelay);
-	UE_DEPRECATED(4.23, "SetLoopType not valid anymore, use SetLoop instead.")
-	UFUNCTION(BlueprintCallable, Category = "LTween", meta = (DeprecatedFunction, DeprecationMessage = "SetLoopType not valid anymore, use SetLoop instead."))
-		virtual ULTweener* SetLoopType(ELTweenLoop newLoopType)
-	{
-		return SetLoop(newLoopType, -1);
-	}
+
 	/**
 	 * Set loop of tween.
 	 * Has no effect if the Tween has already started.
@@ -227,9 +207,6 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "LTween")
 		virtual ULTweener* SetLoop(ELTweenLoop newLoopType, int32 newLoopCount = 1);
-	UE_DEPRECATED(4.23, "GetLoopCount not valid anymore, use GetLoopCycleCount instead.")
-	UFUNCTION(BlueprintCallable, Category = "LTween", meta = (DeprecatedFunction, DeprecationMessage = "GetLoopCount not valid anymore, use GetLoopCycleCount instead."))
-		int32 GetLoopCount() { return loopCycleCount; }
 	/** curently completed loop cycle count */
 	UFUNCTION(BlueprintCallable, Category = "LTween")
 		int32 GetLoopCycleCount()const { return loopCycleCount; }
@@ -251,7 +228,7 @@ public:
 	}
 	/** execute when animation complete */
 	UFUNCTION(BlueprintCallable, Category = "LTween")
-		ULTweener* OnComplete(const FLTweenerSimpleDynamicDelegate& newComplete)
+		ULTweener* OnComplete(const FLTweenSimpleDynamicDelegate& newComplete)
 	{
 		this->onCompleteCpp.BindLambda([newComplete] {
 			newComplete.ExecuteIfBound();
@@ -276,7 +253,7 @@ public:
 	}
 	/** if use loop, this will call every time after tween complete in every cycle */
 	UFUNCTION(BlueprintCallable, Category = "LTween")
-		ULTweener* OnCycleComplete(const FLTweenerSimpleDynamicDelegate& newCycleComplete)
+		ULTweener* OnCycleComplete(const FLTweenSimpleDynamicDelegate& newCycleComplete)
 	{
 		this->onCycleCompleteCpp.BindLambda([newCycleComplete] {
 			newCycleComplete.ExecuteIfBound();
@@ -301,7 +278,7 @@ public:
 	}
 	/** if use loop, this will call every time when begin tween in every cycle */
 	UFUNCTION(BlueprintCallable, Category = "LTween")
-		ULTweener* OnCycleStart(const FLTweenerSimpleDynamicDelegate& newCycleStart)
+		ULTweener* OnCycleStart(const FLTweenSimpleDynamicDelegate& newCycleStart)
 	{
 		this->onCycleStartCpp.BindLambda([newCycleStart] {
 			newCycleStart.ExecuteIfBound();
@@ -326,7 +303,7 @@ public:
 	}
 	/** execute every frame if animation is playing */
 	UFUNCTION(BlueprintCallable, Category = "LTween")
-		ULTweener* OnUpdate(const FLTweenerFloatDynamicDelegate& newUpdate)
+		ULTweener* OnUpdate(const FLTweenFloatDynamicDelegate& newUpdate)
 	{
 		this->onUpdateCpp.BindLambda([newUpdate](float progress) {
 			newUpdate.ExecuteIfBound(progress);
@@ -342,7 +319,7 @@ public:
 	}
 	/** execute when animation start, blueprint version*/
 	UFUNCTION(BlueprintCallable, Category = "LTween")
-		ULTweener* OnStart(const FLTweenerSimpleDynamicDelegate& newStart)
+		ULTweener* OnStart(const FLTweenSimpleDynamicDelegate& newStart)
 	{
 		this->onStartCpp.BindLambda([newStart] {
 			newStart.ExecuteIfBound();
@@ -359,12 +336,19 @@ public:
 		return this;
 	}
 	/**
-	 * Set CurveFloat as animation curve. Make sure ease type is CurveFloat. (Call SetEase function to set ease type)
+	 * Set CurveFloat as animation curve.
 	 * Has no effect if the Tween has already started.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "LTween")
 		ULTweener* SetCurveFloat(UCurveFloat* newCurveFloat);
 	/**
+	 * Set RuntimeFloatCurve as animation curve.
+	 * Has no effect if the Tween has already started.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "LTween")
+	ULTweener* SetRuntimeFloatCurve(const FRuntimeFloatCurve& Value);
+	/**
+	 * Called by LTweenManager.
 	 * @return false: the tween is complete and need to be killed. true: the tween is still processing.
 	 */
 	virtual bool ToNext(float deltaTime, float unscaledDeltaTime);
@@ -431,6 +415,13 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "LTween")
 		ULTweener* SetTickType(ELTweenTickType value = ELTweenTickType::DuringPhysics);
+	/**
+	 * Set Id of this tween, which can then be used as a filter.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "LTween")
+	ULTweener* SetId(int32 value) { id = value; return this; }
+	UFUNCTION(BlueprintCallable, Category = "LTween")
+	int32 GetId()const { return id; }
 protected:
 	/** get value when start. child class must override this, check LTweenerFloat for reference */
 	virtual void OnStartGetValue() PURE_VIRTUAL(ULTweener::OnStartGetValue, );
@@ -695,7 +686,5 @@ public:
 		if (t < d * 0.5f) return InBounce(c, 0, t * 2, d) * .5f + b;
 		else return OutBounce(c, 0, t * 2 - d, d) * .5f + c * .5f + b;
 	}
-	/** Tween use CurveFloat, in range of 0-1. if curveFloat is null, fallback to Linear */
-	float CurveFloat(float c, float b, float t, float d);
 #pragma endregion
 };

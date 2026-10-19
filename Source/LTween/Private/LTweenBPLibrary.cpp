@@ -854,8 +854,8 @@ ULTweener* ULTweenBPLibrary::MeshMaterialScalarParameterTo(UPrimitiveComponent* 
 		return nullptr;
 	}
 	float startValue = 0;
+	auto material = target->CreateAndSetMaterialInstanceDynamic(materialIndex);
 	int32 parameterIndex = 0;
-	auto material = target->CreateAndSetMaterialInstanceDynamic(parameterIndex);
 	if (material->GetScalarParameterValue(parameterName, startValue))
 	{
 		material->InitializeScalarParameterAndGetIndex(parameterName, startValue, parameterIndex);
@@ -884,8 +884,8 @@ ULTweener* ULTweenBPLibrary::MeshMaterialVectorParameterTo(UPrimitiveComponent* 
 		return nullptr;
 	}
 	FLinearColor startValue = FLinearColor();
+	auto material = target->CreateAndSetMaterialInstanceDynamic(materialIndex);
 	int32 parameterIndex = 0;
-	auto material = target->CreateAndSetMaterialInstanceDynamic(parameterIndex);
 	if (material->GetVectorParameterValue(parameterName, startValue))
 	{
 		material->InitializeVectorParameterAndGetIndex(parameterName, startValue, parameterIndex);

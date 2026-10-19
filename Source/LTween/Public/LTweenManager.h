@@ -66,8 +66,7 @@ public:
 	virtual void Deinitialize() override;
 	virtual bool ShouldCreateSubsystem(UObject* Outer) const override;
 	//~End of USubsystem interface
-
-	//~FTickableObjectBase interface
+	
 	void Tick(ELTweenTickType TickType, float DeltaTime);
 	
 	UFUNCTION(BlueprintPure, Category = LTween, meta = (WorldContext = "WorldContextObject", DisplayName = "Get LTween Instance"))
@@ -75,30 +74,10 @@ public:
 	static FLTweenManagerCreated OnLTweenManagerCreated;
 private:
 	/** current active tweener collection*/
-	UPROPERTY(VisibleAnywhere, Category=LTween)TArray<TObjectPtr<ULTweener>> tweenerList;
+	UPROPERTY(VisibleAnywhere, Category=LTween)TArray<TObjectPtr<ULTweener>> TweenerList;
 	void OnTick(ELTweenTickType TickType, float DeltaTime, float UnscaledDeltaTime);
-	FLTweenUpdateMulticastDelegate updateEvent;
-	bool bTickPaused = false;
+	FLTweenUpdateMulticastDelegate UpdateEvent;
 public:
-	UE_DEPRECATED(5.1, "Use Tweener->SetTickType(ELTweenTickType::Manual) then call this->ManualTick.")
-	/** Use "CustomTick" instead of UE4's default Tick to control your tween animations. Call "DisableTick" function to disable UE4's default Tick function, then call this CustomTick function.*/
-	UFUNCTION(BlueprintCallable, Category = LTween, meta=(DeprecatedFunction, DeprecationMessage = "Use Tweener->SetTickType(ELTweenTickType::Manual) then call this->ManualTick."))
-	void CustomTick(float DeltaTime);
-	UE_DEPRECATED(5.1, "Use Tweener->SetTickType(ELTweenTickType::Manual) then call this->ManualTick.")
-	/**
-	 * Disable default Tick function, so you can pause all tween or use CustomTick to do your own tick and use your own DeltaTime.
-	 * This will only pause the tick with current LTweenManager instance, so after load a new level, default Tick will work again, and you need to call DisableTick again if you want to disable tick.
-	 */ 
-	UFUNCTION(BlueprintCallable, Category = LTween, meta = (DeprecatedFunction, DeprecationMessage = "Use Tweener->SetTickType(ELTweenTickType::Manual) then call this->ManualTick."))
-	void DisableTick();
-	UE_DEPRECATED(5.1, "Use Tweener->SetTickType(ELTweenTickType::Manual) then call this->ManualTick.")
-	/**
-	 * Enable default Tick if it is disabled.
-	 */
-	UFUNCTION(BlueprintCallable, Category = LTween, meta = (DeprecatedFunction, DeprecationMessage = "Use Tweener->SetTickType(ELTweenTickType::Manual) then call this->ManualTick."))
-	void EnableTick();
-
-
 	UFUNCTION(BlueprintCallable, Category = LTween)
 	void ManualTick(float DeltaTime);
 
@@ -106,24 +85,43 @@ public:
 	 * Kill all tweens
 	 */
 	UFUNCTION(BlueprintCallable, Category = LTween)
-	void KillAllTweens(bool callComplete = false);
+	void KillAllTweens(bool bCallComplete = false);
+	/**
+	 * Kill all tween animations created on TargetObject
+	 * @param TargetObject The object which contains the tweener
+	 * @param bCallComplete true: execute onComplete event.
+	 * @return The number of tweens killed.
+	 */
+	UFUNCTION(BlueprintCallable, Category = LTween)
+	static int KillAllTweensOnTarget(UObject* WorldContextObject, UObject* TargetObject, bool bCallComplete = false);
+	/**
+	 * Kill all tween animations with specific Id
+	 * @param Id The Id of the tweener
+	 * @param bCallComplete true: execute onComplete event.
+	 * @return The number of tweens killed.
+	 */
+	UFUNCTION(BlueprintCallable, Category = LTween)
+	static int KillAllTweensById(UObject* WorldContextObject, int32 Id, bool bCallComplete = false);
 
 	/**
 	 * Is the tweener is currently tweening? 
 	 * @param item tweener item
 	 */
 	static bool IsTweening(UObject* WorldContextObject, ULTweener* item);
+	bool IsTweening(ULTweener* item);
 	/**
 	 * Kill the tweener if it is tweening.
 	 * @param item tweener item
 	 * @param callComplete true-execute onComplete event.
 	 */
 	static void KillIfIsTweening(UObject* WorldContextObject, ULTweener* item, bool callComplete);
+	void KillIfIsTweening(ULTweener* item, bool callComplete);
 	/**
 	 * Remove tweener from list, so the tweener will not be managed by this LTweenManager.
 	 * @param item tweener item
 	 */
 	static void RemoveTweener(UObject* WorldContextObject, ULTweener* item);
+	void RemoveTweener(ULTweener* item);
 
 	static ULTweener* To(UObject* WorldContextObject, const FLTweenFloatGetterFunction& getter, const FLTweenFloatSetterFunction& setter, float endValue, float duration);
 	static ULTweener* To(UObject* WorldContextObject, const FLTweenDoubleGetterFunction& getter, const FLTweenDoubleSetterFunction& setter, double endValue, float duration);
@@ -146,9 +144,4 @@ public:
 	static ULTweener* UpdateCall(UObject* WorldContextObject);
 
 	static class ULTweenerSequence* CreateSequence(UObject* WorldContextObject);
-
-	UE_DEPRECATED(5.2, "Use LTweenBPLibrary.UpdateCall instead.")
-	static FDelegateHandle RegisterUpdateEvent(UObject* WorldContextObject, const FLTweenUpdateDelegate& update);
-	UE_DEPRECATED(5.2, "Use LTweenBPLibrary.UpdateCall instead of RegisterUpdateEvent, and KillIfIsTweening for returned tweener instead of this UnregisterUpdateEvent.")
-	static void UnregisterUpdateEvent(UObject* WorldContextObject, const FDelegateHandle& delegateHandle);
 };

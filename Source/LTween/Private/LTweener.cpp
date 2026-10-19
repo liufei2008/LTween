@@ -98,9 +98,6 @@ ULTweener* ULTweener::SetEase(ELTweenEase easetype)
 	case ELTweenEase::InOutBounce:
 		tweenFunc.BindStatic(&ULTweener::InOutBounce);
 		break;
-	case ELTweenEase::CurveFloat:
-		tweenFunc.BindUObject(this, &ULTweener::CurveFloat);
-		break;
 	}
 	return this;
 }
@@ -121,26 +118,39 @@ ULTweener* ULTweener::SetLoop(ELTweenLoop newLoopType, int32 newLoopCount)
 	this->maxLoopCount = newLoopCount;
 	return this;
 }
-ULTweener* ULTweener::SetEaseCurve(UCurveFloat* newCurve)
-{
-	if (IsValid(newCurve))
-	{
-		SetEase(ELTweenEase::CurveFloat);
-		curveFloat = newCurve;
-	}
-	else
-	{
-		UE_LOG(LTween, Error, TEXT("[ULTweener::SetEaseCurve]newCurve is not valid!"));
-	}
-	return this;
-}
 
 ULTweener* ULTweener::SetCurveFloat(UCurveFloat* newCurveFloat)
 {
 	if (elapseTime > 0 || startToTween)return this;
-	curveFloat = newCurveFloat;
+	tweenFunc.BindWeakLambda(newCurveFloat, [=](float c, float b, float t, float d) {
+		if (d < KINDA_SMALL_NUMBER)return c + b;
+		if (newCurveFloat)
+		{
+			return newCurveFloat->GetFloatValue(t / d) * c + b;
+		}
+		else
+		{
+			UE_LOG(LTween, Warning, TEXT("[ULTweener::SetCurveFloat] CurveFloat not valid! Fallback to linear. You should always call SetCurveFloat(and pass a valid curve) if set Easetype to CurveFloat."));
+			return Linear(c, b, t, d);
+		}
+	});
 	return this;
 }
+
+ULTweener* ULTweener::SetRuntimeFloatCurve(const FRuntimeFloatCurve& Value)
+{
+	if (elapseTime > 0 || startToTween)return this;
+	tweenFunc.BindLambda([=](float c, float b, float t, float d) {
+		if (d < KINDA_SMALL_NUMBER)return c + b;
+		if (const FRichCurve* RichCurve = Value.GetRichCurveConst())
+		{
+			return RichCurve->Eval(t / d) * c + b;
+		}
+		return Linear(c, b, t, d);
+	});
+	return this;
+}
+
 ULTweener* ULTweener::SetAffectByGamePause(bool value)
 {
 	affectByGamePause = value;
@@ -321,18 +331,4 @@ ULTweener* ULTweener::SetTickType(ELTweenTickType value)
 	if (elapseTime > 0 || startToTween)return this;
 	this->tickType = value;
 	return this;
-}
-
-float ULTweener::CurveFloat(float c, float b, float t, float d)
-{
-	if (d < KINDA_SMALL_NUMBER)return c + b;
-	if (curveFloat.IsValid())
-	{
-		return curveFloat->GetFloatValue(t / d) * c + b;
-	}
-	else
-	{
-		UE_LOG(LTween, Warning, TEXT("[ULTweener::CurveFloat]CurveFloat not valid! Fallback to linear. You should always call SetCurveFloat(and pass a valid curve) if set Easetype to CurveFloat."));
-		return Linear(c, b, t, d);
-	}
 }
